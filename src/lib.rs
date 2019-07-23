@@ -96,6 +96,17 @@ struct Network {
 }
 
 impl Network {
+    // Creates a network.
+    fn new(signals: Vec<Signal>, neurons: Vec<Neuron>) -> Self {
+        let queue = Queue::new(&signals, &neurons);
+        Network {
+            signals: signals,
+            neurons: neurons,
+            queue: queue
+        }
+    }
+
+    // Updates network by firing the next node.
     fn update(&mut self) {
         // get the next node to fire
         // we use unwrap because priority queue must always be populated
@@ -180,26 +191,26 @@ impl PartialOrd for Node {
 }
 
 /// Priority queue
-/// Determines which node to fire next
+/// Determines which node to fire next.
 struct Queue {
     queue: BinaryHeap<Node>
 }
 
 impl Queue {
     /// Creates a priority queue for a network.
-    fn new(net: &Network) -> Queue {
+    fn new(signals: &[Signal], neurons: &[Neuron]) -> Queue {
         let mut queue = BinaryHeap::new();
         let mut rng = rand::thread_rng();
         let mut index: usize = 0;
 
-        for node in &net.signals {
+        for node in signals {
             queue.push(
                 Node{ wait: rexp(node.rate, &mut rng), index: index }
             );
             index += 1;
         }
 
-        for node in &net.neurons {
+        for node in neurons {
             queue.push(
                 Node{ wait: rexp(node.rate, &mut rng), index: index }
             );
