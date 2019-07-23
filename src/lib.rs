@@ -37,30 +37,41 @@ impl Neuron {
         }
     }
 
-    /// Propagates action potential if ready.
-    fn propagate(&mut self, net: &mut Network) {
+    /// Excites neuron and possibly returns action potential signal.
+    /// A downstream neuron will not receive both negative and 
+    /// positive signals simultaneously.
+    fn excite(&self) -> Option<(Signal, Signal)> {
         if self.reserve > 0 {
+            let mut ntargets = Vec::new();
+            let mut ptargets = Vec::new();
+
             use rand_distr::{Uniform, Distribution};
             let mut rng = rand::thread_rng();
             let unif = Uniform::new(0.0, 1.0);
 
             // propagate signal to each target
             for i in 0..self.targets.len() {
-                let target = &mut net.neurons[self.targets[i]];
+                let target = self.targets[i];
                 let pneg = self.pnegatives[i];
                 let ppos = self.ppositives[i];
 
                 let r: f32 = unif.sample(&mut rng);
                 if r < pneg {
-                    target.receive(-1);
+                    ntargets.push(target);
                 } else if r < ppos {
-                    target.receive(1);
+                    ptargets.push(target);
                 } else {
                     // output dissipates
                 }
             }
-            // activation depletes reserve
-            self.reserve -= 1;
+            
+            Some((
+                Signal { value: -1, rate: 0.0, targets: ntargets },
+                Signal { value:  1, rate: 0.0, targets: ptargets },
+            ))
+        } else {
+            // neuron cannot fire yet
+            None
         }
     }
 }
@@ -101,15 +112,28 @@ impl Network {
         } else {
             // a neuron fires
             let index = node.index - self.signals.len();
-            let neuron = &mut self.neurons[index];
+            let neuron = &self.neurons[index];
             rate = neuron.rate;
-            neuron.propagate(self);
+            match neuron.excite() {
+                Some( (pos, neg) ) => {
+                    // after neuron's activation, reduce its reserve
+                    self.neurons[index].receive(-1);
+                    // send positive signals
+                    for i in pos.targets {
+                        self.neurons[i].receive(pos.value);
+                    }
+                    // send negative signals
+                    for i in neg.targets {
+                        self.neurons[i].receive(neg.value);
+                    }
+                },
+                _ => (),
+            }
         }
 
-        // push node back onto the queue
-        let mut rng = rand::thread_rng();
+        // push node back onto the queue for next firing
         self.queue.push(
-            Node{ wait: rexp(rate, &mut rng), index: node.index }
+            Node{ wait: rexp(rate, &mut rand::thread_rng()), index: node.index }
         );
     }
 }
