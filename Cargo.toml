@@ -1,0 +1,8 @@
+[package]
+name = "rnn"
+version = "0.1.0"
+authors = ["David J. H. Shih <djh.shih@gmail.com>"]
+
+[dependencies]
+rand = "0.7"
+rand_distr = "0.2.1"
