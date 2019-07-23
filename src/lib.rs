@@ -7,11 +7,16 @@ use std::collections::BinaryHeap;
 /// Sample from exponential distribution
 fn rexp<R: rand::Rng>(rate: f32, mut rng: &mut R) -> f32 {
     use rand_distr::{Exp, Distribution};
-    let exp = Exp::new(rate).unwrap();
-    exp.sample(&mut rng)
+    if rate > 0.0 {
+        let exp = Exp::new(rate).unwrap();
+        exp.sample(&mut rng)
+    } else {
+        std::f32::INFINITY
+    }
 }
 
 /// Stochastically firing neuron
+#[derive(Debug)]
 struct Neuron {
     /// reserve potential
     reserve: i16,
@@ -78,6 +83,7 @@ impl Neuron {
 }
 
 /// External signal
+#[derive(Debug)]
 struct Signal {
     /// signal value
     value: i16,
@@ -88,6 +94,7 @@ struct Signal {
 }
 
 /// Random neuron network
+#[derive(Debug)]
 struct Network {
     /// positive and negative signals
     signals: Vec<Signal>,
@@ -152,6 +159,7 @@ impl Network {
 }
 
 /// Placeholder for a signal or a neuron
+#[derive(Debug)]
 struct Node {
     /// wait time until next firing
     wait: f32,
@@ -195,6 +203,7 @@ impl PartialOrd for Node {
 
 /// Priority queue
 /// Determines which node to fire next.
+#[derive(Debug)]
 struct Queue {
     queue: BinaryHeap<Node>
 }
@@ -237,7 +246,51 @@ impl Queue {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn it_works() {
+    fn xor_rnn() {
+        let r = 0.1;
+        let neurons = vec![
+            Neuron {
+                reserve: 0,
+                rate: 2.0,
+                targets: vec![2, 3],
+                pnegatives: vec![0.0, 0.5],
+                ppositives: vec![0.5, 0.0],
+            },
+            Neuron {
+                reserve: 0,
+                rate: 2.0,
+                targets: vec![2, 3],
+                pnegatives: vec![0.0, 0.5],
+                ppositives: vec![0.5, 0.0],
+            },
+            Neuron {
+                reserve: 0,
+                rate: 1.1,
+                targets: vec![3],
+                pnegatives: vec![0.0],
+                ppositives: vec![1.0],
+            },
+            Neuron {
+                reserve: 0,
+                rate: r,
+                targets: Vec::new(),
+                pnegatives: Vec::new(),
+                ppositives: Vec::new(),
+            },
+        ];
+
+        let signals = vec![
+            Signal { value: 1, rate: 3.0, targets: vec![0] },
+            Signal { value: 1, rate: 3.0, targets: vec![1] },
+        ];
+
+        let mut net = Network::new(signals, neurons);
+        for i in 0..100 {
+            net.update();
+        }
+        println!("{:?}", net.neurons[3]);
     }
 }
