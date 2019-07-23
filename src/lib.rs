@@ -17,7 +17,7 @@ fn rexp<R: rand::Rng>(rate: f32, mut rng: &mut R) -> f32 {
 
 /// Stochastically firing neuron
 #[derive(Debug)]
-struct Neuron {
+pub struct Neuron {
     /// reserve potential
     reserve: i16,
     /// firing rate >= 0
@@ -36,7 +36,7 @@ struct Neuron {
 
 impl Neuron {
     /// Receives input.
-    fn receive(&mut self, value: i16) {
+    pub fn receive(&mut self, value: i16) {
         self.reserve += value;
         if self.reserve < 0 {
             self.reserve = 0;
@@ -46,7 +46,7 @@ impl Neuron {
     /// Excites neuron and possibly returns action potential signal.
     /// A downstream neuron will not receive both negative and 
     /// positive signals simultaneously.
-    fn excite(&self) -> Option<(Signal, Signal)> {
+    pub fn excite(&self) -> Option<(Signal, Signal)> {
         if self.reserve > 0 {
             let mut ntargets = Vec::new();
             let mut ptargets = Vec::new();
@@ -84,7 +84,7 @@ impl Neuron {
 
 /// External signal
 #[derive(Debug)]
-struct Signal {
+pub struct Signal {
     /// signal value
     value: i16,
     /// arrival rates
@@ -95,7 +95,7 @@ struct Signal {
 
 /// Random neuron network
 #[derive(Debug)]
-struct Network {
+pub struct Network {
     /// positive and negative signals
     signals: Vec<Signal>,
     /// neurons
@@ -106,7 +106,7 @@ struct Network {
 
 impl Network {
     // Creates a network.
-    fn new(signals: Vec<Signal>, neurons: Vec<Neuron>) -> Self {
+    pub fn new(signals: Vec<Signal>, neurons: Vec<Neuron>) -> Self {
         let queue = Queue::new(&signals, &neurons);
         Network {
             signals: signals,
@@ -116,7 +116,7 @@ impl Network {
     }
 
     // Updates network by firing the next node.
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         // get the next node to fire
         // we use unwrap because priority queue must always be populated
         let node = self.queue.pop().unwrap();
