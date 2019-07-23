@@ -11,6 +11,7 @@ fn rexp<R: rand::Rng>(rate: f32, mut rng: &mut R) -> f32 {
     exp.sample(&mut rng)
 }
 
+/// Stochastically firing neuron
 struct Neuron {
     /// reserve potential
     reserve: i16,
@@ -86,6 +87,7 @@ struct Signal {
     targets: Vec<usize>,
 }
 
+/// Random neuron network
 struct Network {
     /// positive and negative signals
     signals: Vec<Signal>,
@@ -149,6 +151,7 @@ impl Network {
     }
 }
 
+/// Placeholder for a signal or a neuron
 struct Node {
     /// wait time until next firing
     wait: f32,
