@@ -115,8 +115,9 @@ impl Network {
         }
     }
 
-    // Updates network by firing the next node.
-    pub fn update(&mut self) {
+    /// Updates the network by firing the next node.
+    /// Returns the elapsed time.
+    pub fn update(&mut self) -> f32 {
         // get the next node to fire
         // we use unwrap because priority queue must always be populated
         let node = self.queue.pop().unwrap();
@@ -155,6 +156,8 @@ impl Network {
         self.queue.push(
             Node{ wait: rexp(rate, &mut rand::thread_rng()), index: node.index }
         );
+
+        node.wait
     }
 }
 
@@ -288,8 +291,9 @@ mod tests {
         ];
 
         let mut net = Network::new(signals, neurons);
-        for i in 0..100 {
-            net.update();
+        let mut t: f64 = 0.0;
+        while t < 50.0 {
+            t += net.update() as f64;
         }
         println!("{:?}", net.neurons[3]);
     }
