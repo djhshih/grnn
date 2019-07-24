@@ -16,7 +16,7 @@ fn rexp<R: rand::Rng>(rate: f32, mut rng: &mut R) -> f32 {
 }
 
 /// Stochastically firing neuron
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Neuron {
     /// reserve potential
     reserve: i16,
@@ -28,6 +28,8 @@ pub struct Neuron {
     pnegatives: Vec<f32>,
     /// probability of outgoing positive signal
     ppositives: Vec<f32>,
+    /// whether neuron is an output neuron
+    is_output: bool,
 
     // Property
     // sum(pneg) + sum(ppos) + pdissipate == 1
@@ -115,13 +117,33 @@ impl Network {
         }
     }
 
+    /// Runs the network until the next output neuron fires.
+    /// Returns the elapsed time and the index of output neuron that fired.
+    pub fn run(&mut self) -> (f64, usize) {
+        let mut t = 0.0;
+        let index;
+        loop {
+            let (dt, out) = self.update();
+            t += dt;
+            match out {
+                Some(i) => {
+                    index = i;
+                    break;
+                },
+                _ => ()
+            }
+        }
+        (t, index) 
+    }
+
     /// Updates the network by firing the next node.
-    /// Returns the elapsed time.
-    pub fn update(&mut self) -> f32 {
+    /// Returns the elapsed time and index of output neuron that fired, if any.
+    pub fn update(&mut self) -> (f64, Option<usize>) {
         // get the next node to fire
         // we use unwrap because priority queue must always be populated
         let node = self.queue.pop().unwrap();
 
+        let output;
         let rate;
         if node.index < self.signals.len() {
             // a signal arrives
@@ -130,10 +152,16 @@ impl Network {
             for i in &signal.targets {
                 self.neurons[*i].receive(signal.value);
             }
+            output = None;
         } else {
             // a neuron fires
             let index = node.index - self.signals.len();
             let neuron = &self.neurons[index];
+            if neuron.is_output {
+                output = Some(index);
+            } else {
+                output = None;
+            }
             rate = neuron.rate;
             match neuron.excite() {
                 Some( (pos, neg) ) => {
@@ -157,7 +185,7 @@ impl Network {
             Node{ wait: rexp(rate, &mut rand::thread_rng()), index: node.index }
         );
 
-        node.wait
+        (node.wait as f64, output)
     }
 }
 
@@ -261,6 +289,7 @@ mod tests {
                 targets: vec![2, 3],
                 pnegatives: vec![0.0, 0.5],
                 ppositives: vec![0.5, 0.0],
+                is_output: false,
             },
             Neuron {
                 reserve: 0,
@@ -268,6 +297,7 @@ mod tests {
                 targets: vec![2, 3],
                 pnegatives: vec![0.0, 0.5],
                 ppositives: vec![0.5, 0.0],
+                is_output: false,
             },
             Neuron {
                 reserve: 0,
@@ -275,6 +305,7 @@ mod tests {
                 targets: vec![3],
                 pnegatives: vec![0.0],
                 ppositives: vec![1.0],
+                is_output: false,
             },
             Neuron {
                 reserve: 0,
@@ -282,19 +313,34 @@ mod tests {
                 targets: Vec::new(),
                 pnegatives: Vec::new(),
                 ppositives: Vec::new(),
+                is_output: true,
             },
         ];
 
-        let signals = vec![
-            Signal { value: 1, rate: 3.0, targets: vec![0] },
-            Signal { value: 1, rate: 3.0, targets: vec![1] },
-        ];
+        {
+            let signals = vec![
+                Signal { value: 1, rate: 0.0, targets: vec![0] },
+                Signal { value: 1, rate: 3.0, targets: vec![1] },
+            ];
 
-        let mut net = Network::new(signals, neurons);
-        let mut t: f64 = 0.0;
-        while t < 50.0 {
-            t += net.update() as f64;
+            let mut net = Network::new(signals, neurons);
+            let mut t = 0.0;
+            let mut count = 0;
+            let mut steps = 0;
+            while t < 1000.0 {
+                let (dt, opt) = net.update();
+                match opt {
+                    Some(_) => count += 1,
+                    _ => (),
+                }
+                t += dt;
+                steps += 1;
+            }
+
+            println!("{:?}", net.neurons);
+            
+            println!("steps: {}, count: {}", steps, count);
+            assert!(count <= 5);
         }
-        println!("{:?}", net.neurons[3]);
     }
 }
