@@ -45,10 +45,10 @@ impl Neuron {
         }
     }
 
-    /// Excites neuron and possibly returns action potential signal.
-    /// A downstream neuron will not receive both negative and 
-    /// positive signals simultaneously.
-    pub fn excite(&self) -> Option<(i16, usize)> {
+    /// Excites neuron.
+    /// Requires index of neuron to record the source.
+    /// At most one action potential event is returned.
+    pub fn excite(&self, index: usize) -> Option<Event> {
         if self.reserve > 0 {
 
             use rand_distr::{Uniform, Distribution};
@@ -84,10 +84,10 @@ impl Neuron {
 
             if target > 0 {
                 // convert target index from 1-based to 0-based
-                Some( (signal_value, target - 1) )
+                Some( Event { value: signal_value, source: index, target: target - 1 } )
             } else {
                 // output signal dissipates
-                Some( (signal_value, 0) )
+                Some( Event { value: 0, source: index, target: 0 } )
             }
         } else {
             // neuron cannot fire yet
@@ -105,6 +105,17 @@ pub struct Signal {
     rate: f32,
     /// index of target neurons
     targets: Vec<usize>,
+}
+
+/// Action potential event
+#[derive(Debug)]
+pub struct Event {
+    /// signal value
+    value: i16,
+    /// index of source neuron
+    source: usize,
+    /// index of target neuron
+    target: usize,
 }
 
 /// Random neuron network
@@ -130,34 +141,41 @@ impl Network {
     }
 
     pub fn len(&self) -> usize {
-        self.signals.len() + self.neurons.len()
+        self.neurons.len()
     }
 
-    /// Runs the network until the next output neuron fires.
-    /// Returns the elapsed time and the index of output neuron that fired.
-    pub fn run(&mut self) -> (f64, usize) {
+    /// Runs the network until the next neuron under recording fires.
+    /// Returns the elapsed time and the event.
+    pub fn run(&mut self) -> (f64, Event) {
         let mut t = 0.0;
-        let index;
+        let event;
         loop {
-            let (dt, i, out) = self.update();
+            let (dt, record, opt) = self.update();
             t += dt;
-            if out {
-                index = i - self.signals.len();
-                break;
+            if record {
+                match opt {
+                    Some(ev) => {
+                        event = ev;
+                        break;
+                    },
+                    _ => ()
+                }
             }
         }
-        (t, index) 
+        (t, event) 
     }
 
     /// Updates the network by firing the next node.
-    /// Returns the elapsed time, index of fired node (signal or neuron), and
-    /// whether the fired node is being recorded
-    pub fn update(&mut self) -> (f64, usize, bool) {
+    /// Returns the elapsed time,
+    /// whether the fired neuron is being recorded,
+    /// and the action potential event (if any)
+    pub fn update(&mut self) -> (f64, bool, Option<Event>) {
         // get the next node to fire
         // we use unwrap because priority queue must always be populated
         let node = self.queue.pop().unwrap();
 
         let mut record = false;
+        let mut option = None;
         let rate;
         if node.index < self.signals.len() {
             // a signal arrives
@@ -170,21 +188,21 @@ impl Network {
             let index = node.index - self.signals.len();
             let neuron = &self.neurons[index];
             rate = neuron.rate;
-            match neuron.excite() {
-                Some( (signal_value, target) ) => {
+            match neuron.excite(index) {
+                Some(ev) => {
                     // a neuron fires
                     if neuron.record {
                         record = true;
                     }
-                    println!("{} -> ({}, {})", index, signal_value, target);
                     // after neuron's activation, reduce its reserve
                     self.neurons[index].receive(-1);
                     // send signal to postsynaptic neuron
-                    if signal_value != 0 {
-                        self.neurons[target].receive(signal_value);
+                    if ev.value != 0 {
+                        self.neurons[ev.target].receive(ev.value);
                     }
+                    option = Some(ev);
                 },
-                _ => (),
+                _ => ()
             }
         }
 
@@ -193,7 +211,7 @@ impl Network {
             Node{ wait: rexp(rate, &mut rand::thread_rng()), index: node.index }
         );
 
-        (node.wait as f64, node.index, record)
+        (node.wait as f64, record, option)
     }
 }
 
@@ -313,7 +331,7 @@ mod tests {
                 targets: vec![3],
                 pnegatives: vec![0.0],
                 ppositives: vec![1.0],
-                record: true,
+                record: false,
             },
             Neuron {
                 reserve: 0,
@@ -337,11 +355,15 @@ mod tests {
             let mut steps = 0;
             let mut spike_counts = vec![0; net.len()];
             while t < 10.0 {
-                let (dt, i, record) = net.update();
-                spike_counts[i] += 1;
+                let (dt, record, opt) = net.update();
+                match opt {
+                    Some(event) => {
+                        spike_counts[event.source] += 1;
+                        println!("{}: {} -> {}", event.value, event.source, event.target);
+                    },
+                    _ => ()
+                }
                 if record {
-                    let index = i - net.signals.len();
-                    println!("{}, {:?}", index, net.neurons);
                     count += 1;
                 }
                 t += dt;
