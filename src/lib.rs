@@ -48,35 +48,46 @@ impl Neuron {
     /// Excites neuron and possibly returns action potential signal.
     /// A downstream neuron will not receive both negative and 
     /// positive signals simultaneously.
-    pub fn excite(&self) -> Option<(Signal, Signal)> {
+    pub fn excite(&self) -> Option<(i16, usize)> {
         if self.reserve > 0 {
-            let mut ntargets = Vec::new();
-            let mut ptargets = Vec::new();
 
             use rand_distr::{Uniform, Distribution};
             let mut rng = rand::thread_rng();
             let unif = Uniform::new(0.0, 1.0);
+            let r: f32 = unif.sample(&mut rng);
 
-            // propagate signal to each target
+            // propagate signal to a target
+            // target uses 1-index and 0 is a placeholder for NA
+            let mut target = 0;
+            let mut signal_value = -1;
+            // assume that sum(pneg) + sum(ppos) + pdissipate == 1
+            let mut cumsum: f32 = 0.0;
             for i in 0..self.targets.len() {
-                let target = self.targets[i];
+                let t = self.targets[i];
                 let pneg = self.pnegatives[i];
                 let ppos = self.ppositives[i];
 
-                let r: f32 = unif.sample(&mut rng);
-                if r < pneg {
-                    ntargets.push(target);
-                } else if r < ppos {
-                    ptargets.push(target);
-                } else {
-                    // output dissipates
+                cumsum += pneg;
+                if r < cumsum {
+                    target = t + 1;
+                    break;
+                }
+
+                cumsum += ppos;
+                if r < cumsum {
+                    target = t + 1;
+                    signal_value = 1;
+                    break;
                 }
             }
-            
-            Some((
-                Signal { value: -1, rate: 0.0, targets: ntargets },
-                Signal { value:  1, rate: 0.0, targets: ptargets },
-            ))
+
+            if target > 0 {
+                // convert target index from 1-based to 0-based
+                Some( (signal_value, target - 1) )
+            } else {
+                // output signal dissipates
+                Some( (0, 0) )
+            }
         } else {
             // neuron cannot fire yet
             None
@@ -162,16 +173,12 @@ impl Network {
             }
             rate = neuron.rate;
             match neuron.excite() {
-                Some( (pos, neg) ) => {
+                Some( (signal_value, target) ) => {
                     // after neuron's activation, reduce its reserve
                     self.neurons[index].receive(-1);
-                    // send positive signals
-                    for i in pos.targets {
-                        self.neurons[i].receive(pos.value);
-                    }
-                    // send negative signals
-                    for i in neg.targets {
-                        self.neurons[i].receive(neg.value);
+                    // send signal to postsynaptic neuron
+                    if signal_value != 0 {
+                        self.neurons[target].receive(signal_value);
                     }
                 },
                 _ => (),
@@ -318,14 +325,14 @@ mod tests {
         {
             let signals = vec![
                 Signal { value: 1, rate: 0.0, targets: vec![0] },
-                Signal { value: 1, rate: 3.0, targets: vec![1] },
+                Signal { value: 1, rate: 2.5, targets: vec![1] },
             ];
 
             let mut net = Network::new(signals, neurons);
             let mut t = 0.0;
             let mut count = 0;
             let mut steps = 0;
-            while t < 1000.0 {
+            while t < 100.0 {
                 let (dt, _, out) = net.update();
                 if out {
                     count += 1;
@@ -333,6 +340,8 @@ mod tests {
                 t += dt;
                 steps += 1;
             }
+
+            println!("{:?}", net.neurons);
 
             println!(
                 "{:?}",
