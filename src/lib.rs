@@ -28,8 +28,8 @@ pub struct Neuron {
     pnegatives: Vec<f32>,
     /// probability of outgoing positive signal
     ppositives: Vec<f32>,
-    /// whether neuron is an output neuron
-    is_output: bool,
+    /// whether neuron is being record
+    record: bool,
 
     // Property
     // sum(pneg) + sum(ppos) + pdissipate == 1
@@ -59,7 +59,7 @@ impl Neuron {
             // propagate signal to a target
             // target uses 1-index and 0 is a placeholder for NA
             let mut target = 0;
-            let mut signal_value = -1;
+            let mut signal_value = 0;
             // assume that sum(pneg) + sum(ppos) + pdissipate == 1
             let mut cumsum: f32 = 0.0;
             for i in 0..self.targets.len() {
@@ -68,13 +68,14 @@ impl Neuron {
                 let ppos = self.ppositives[i];
 
                 cumsum += pneg;
-                if r < cumsum {
+                if r <= cumsum {
                     target = t + 1;
+                    signal_value = -1;
                     break;
                 }
 
                 cumsum += ppos;
-                if r < cumsum {
+                if r <= cumsum {
                     target = t + 1;
                     signal_value = 1;
                     break;
@@ -86,7 +87,7 @@ impl Neuron {
                 Some( (signal_value, target - 1) )
             } else {
                 // output signal dissipates
-                Some( (0, 0) )
+                Some( (signal_value, 0) )
             }
         } else {
             // neuron cannot fire yet
@@ -128,6 +129,10 @@ impl Network {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.signals.len() + self.neurons.len()
+    }
+
     /// Runs the network until the next output neuron fires.
     /// Returns the elapsed time and the index of output neuron that fired.
     pub fn run(&mut self) -> (f64, usize) {
@@ -137,7 +142,7 @@ impl Network {
             let (dt, i, out) = self.update();
             t += dt;
             if out {
-                index = i;
+                index = i - self.signals.len();
                 break;
             }
         }
@@ -146,13 +151,13 @@ impl Network {
 
     /// Updates the network by firing the next node.
     /// Returns the elapsed time, index of fired node (signal or neuron), and
-    /// whether the fired node is an output neuron.
+    /// whether the fired node is being recorded
     pub fn update(&mut self) -> (f64, usize, bool) {
         // get the next node to fire
         // we use unwrap because priority queue must always be populated
         let node = self.queue.pop().unwrap();
 
-        let output_neuron;
+        let mut record = false;
         let rate;
         if node.index < self.signals.len() {
             // a signal arrives
@@ -161,19 +166,17 @@ impl Network {
             for i in &signal.targets {
                 self.neurons[*i].receive(signal.value);
             }
-            output_neuron = false;
         } else {
-            // a neuron fires
             let index = node.index - self.signals.len();
             let neuron = &self.neurons[index];
-            if neuron.is_output {
-                output_neuron = true;
-            } else {
-                output_neuron = false;
-            }
             rate = neuron.rate;
             match neuron.excite() {
                 Some( (signal_value, target) ) => {
+                    // a neuron fires
+                    if neuron.record {
+                        record = true;
+                    }
+                    println!("{} -> ({}, {})", index, signal_value, target);
                     // after neuron's activation, reduce its reserve
                     self.neurons[index].receive(-1);
                     // send signal to postsynaptic neuron
@@ -190,7 +193,7 @@ impl Network {
             Node{ wait: rexp(rate, &mut rand::thread_rng()), index: node.index }
         );
 
-        (node.wait as f64, node.index, output_neuron)
+        (node.wait as f64, node.index, record)
     }
 }
 
@@ -294,7 +297,7 @@ mod tests {
                 targets: vec![2, 3],
                 pnegatives: vec![0.0, 0.5],
                 ppositives: vec![0.5, 0.0],
-                is_output: false,
+                record: false,
             },
             Neuron {
                 reserve: 0,
@@ -302,7 +305,7 @@ mod tests {
                 targets: vec![2, 3],
                 pnegatives: vec![0.0, 0.5],
                 ppositives: vec![0.5, 0.0],
-                is_output: false,
+                record: false,
             },
             Neuron {
                 reserve: 0,
@@ -310,7 +313,7 @@ mod tests {
                 targets: vec![3],
                 pnegatives: vec![0.0],
                 ppositives: vec![1.0],
-                is_output: false,
+                record: true,
             },
             Neuron {
                 reserve: 0,
@@ -318,23 +321,27 @@ mod tests {
                 targets: Vec::new(),
                 pnegatives: Vec::new(),
                 ppositives: Vec::new(),
-                is_output: true,
+                record: true,
             },
         ];
 
         {
             let signals = vec![
-                Signal { value: 1, rate: 0.0, targets: vec![0] },
-                Signal { value: 1, rate: 2.5, targets: vec![1] },
+                Signal { value: 1, rate: 2.0, targets: vec![0] },
+                Signal { value: 1, rate: 2.0, targets: vec![1] },
             ];
 
             let mut net = Network::new(signals, neurons);
             let mut t = 0.0;
             let mut count = 0;
             let mut steps = 0;
-            while t < 100.0 {
-                let (dt, _, out) = net.update();
-                if out {
+            let mut spike_counts = vec![0; net.len()];
+            while t < 10.0 {
+                let (dt, i, record) = net.update();
+                spike_counts[i] += 1;
+                if record {
+                    let index = i - net.signals.len();
+                    println!("{}, {:?}", index, net.neurons);
                     count += 1;
                 }
                 t += dt;
@@ -342,13 +349,8 @@ mod tests {
             }
 
             println!("{:?}", net.neurons);
+            println!("{:?}", spike_counts);
 
-            println!(
-                "{:?}",
-                net.neurons.iter().filter(|n| n.is_output)
-                    .collect::<Vec<&Neuron>>()
-            );
-            
             println!("steps: {}, count: {}", steps, count);
             assert!(count <= 5);
         }
