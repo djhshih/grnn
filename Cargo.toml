@@ -1,5 +1,5 @@
 [package]
-name = "rnn"
+name = "grnn"
 version = "0.1.0"
 authors = ["David J. H. Shih <djh.shih@gmail.com>"]
 license = "LGPL3"
